@@ -1,0 +1,29 @@
+human_follower:
+  ros__parameters:
+    rgb_topic: robot_camera_sensor/image
+    depth_topic: robot_camera_sensor/depth_image
+    camera_info_topic: robot_camera_sensor/camera_info
+    goal_topic: follow_goal
+    cmd_vel_topic: cmd_vel
+    navigate_action: navigate_to_pose
+
+    camera_frame: camera_link_optical
+    global_frame: map
+    robot_base_frame: base_link
+
+    follow_distance: 1.0
+    goal_update_period: 1.0
+    detection_timeout: 3.0
+    transform_timeout: 0.2
+
+    search_when_lost: false
+    search_angular_speed: 0.4
+    publish_goal_topic: true
+    send_nav2_goal: true
+    show_debug_view: false
+    detector_backend: auto
+
+    depth_window_radius: 2
+    depth_scale: 0.001
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5

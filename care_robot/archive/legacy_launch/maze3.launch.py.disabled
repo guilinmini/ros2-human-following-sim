@@ -1,0 +1,113 @@
+import os
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
+
+def generate_launch_description():
+
+    # Gazebo and your package
+    pkg_gazebo_ros = FindPackageShare(package='gazebo_ros').find('gazebo_ros')
+    pkg_share = FindPackageShare(package='care_robot').find('care_robot')
+
+    # World file path
+    world_file_name = 'maze4.world'
+    world_path = os.path.join(pkg_share, 'worlds', world_file_name)
+
+    # Robot URDF path
+    urdf_file = os.path.join(pkg_share, 'URDF', 'mr_robot.urdf')
+
+    # Model path
+    gazebo_models_path = os.path.join(pkg_share, 'models')
+    os.environ["GAZEBO_MODEL_PATH"] = gazebo_models_path
+
+    # Launch configurations
+    headless = LaunchConfiguration('headless')
+    use_sim_time = LaunchConfiguration('use_sim_time')
+    use_simulator = LaunchConfiguration('use_simulator')
+    world = LaunchConfiguration('world')
+
+    # Declare launch args
+    declare_simulator_cmd = DeclareLaunchArgument(
+        name='headless', default_value='False',
+        description='Whether to execute gzclient')
+
+    declare_use_sim_time_cmd = DeclareLaunchArgument(
+        name='use_sim_time', default_value='true',
+        description='Use simulation (Gazebo) clock if true')
+
+    declare_use_simulator_cmd = DeclareLaunchArgument(
+        name='use_simulator', default_value='True',
+        description='Whether to start the simulator')
+
+    declare_world_cmd = DeclareLaunchArgument(
+        name='world', default_value=world_path,
+        description='Full path to the world model file to load')
+
+    # Gazebo server and client
+    start_gazebo_server_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_gazebo_ros, 'launch', 'gzserver.launch.py')),
+        condition=IfCondition(use_simulator),
+        launch_arguments={'world': world}.items())
+
+    start_gazebo_client_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_gazebo_ros, 'launch', 'gzclient.launch.py')),
+        condition=IfCondition(PythonExpression([use_simulator, ' and not ', headless])))
+
+    # Robot State Publisher
+    robot_state_publisher_cmd = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        name='robot_state_publisher',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+        arguments=[urdf_file]
+    )
+
+    # Spawn robot into Gazebo
+    spawn_robot_cmd = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=[
+            '-entity', 'myrobot',
+            '-file', urdf_file,
+            '-x', '-5.5', '-y', '2', '-z', '0'
+        ],
+        output='screen'
+    )
+    
+    # Launch actor_box_node along with everything else
+    actor_box_node = Node(
+        package='care_robot',
+        executable='actor_box_node',  
+        name='actor_box_node',
+        output='screen',
+        parameters=[{'use_sim_time': True}]
+    )
+
+    # Build launch description
+    ld = LaunchDescription()
+
+    # Declarations
+    ld.add_action(declare_simulator_cmd)
+    ld.add_action(declare_use_sim_time_cmd)
+    ld.add_action(declare_use_simulator_cmd)
+    ld.add_action(declare_world_cmd)
+
+    # Gazebo
+    ld.add_action(start_gazebo_server_cmd)
+    ld.add_action(start_gazebo_client_cmd)
+
+    # Robot
+    ld.add_action(robot_state_publisher_cmd)
+    ld.add_action(spawn_robot_cmd)
+    
+    #Actor_box
+    ld.add_action(actor_box_node)
+
+    return ld

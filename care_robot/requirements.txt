@@ -1,0 +1,2 @@
+# Optional high-accuracy detector. The node falls back to OpenCV HOG.
+mediapipe>=0.10,<1.0
