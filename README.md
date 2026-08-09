@@ -18,12 +18,12 @@ src/
 └── docs/                    # 架构说明
 ```
 
-| 包 | 构建类型 | 职责 |
-| --- | --- | --- |
-| `care_robot` | `ament_python` | 人体检测、跟随目标和 actor 非接触代理同步 |
-| `care_robot_description` | `ament_cmake` | 机器人 URDF 与 Gazebo Sim 原生系统插件配置 |
-| `care_robot_gazebo` | `ament_cmake` | Fortress 世界、模型、生成实体和 `ros_gz_bridge` |
-| `care_robot_bringup` | `ament_cmake` | 完整系统、Nav2、SLAM、地图和 RViz |
+| 包                         | 构建类型         | 职责                                             |
+| -------------------------- | ---------------- | ------------------------------------------------ |
+| `care_robot`             | `ament_python` | 人体检测、跟随目标和 actor 非接触代理同步        |
+| `care_robot_description` | `ament_cmake`  | 机器人 URDF 与 Gazebo Sim 原生系统插件配置       |
+| `care_robot_gazebo`      | `ament_cmake`  | Fortress 世界、模型、生成实体和`ros_gz_bridge` |
+| `care_robot_bringup`     | `ament_cmake`  | 完整系统、Nav2、SLAM、地图和 RViz                |
 
 更详细的数据流见 [架构说明](docs/architecture.md)。
 
@@ -144,17 +144,17 @@ ros2 run nav2_map_server map_saver_cli -f follow_map
 
 `simulation.launch.py` 会启动一个集中桥接节点。
 
-| ROS 接口 | 方向 | 用途 |
-| --- | --- | --- |
-| `/clock` | Gazebo Sim 到 ROS 2 | 仿真时钟 |
-| `/cmd_vel` | ROS 2 到 Gazebo Sim | 底盘速度命令 |
-| `/odom` | Gazebo Sim 到 ROS 2 | 里程计 |
-| `/tf`、`/joint_states` | Gazebo Sim 到 ROS 2 | 底盘与轮子状态 |
-| `/scan` | Gazebo Sim 到 ROS 2 | GPU 激光雷达 |
-| `/robot_camera_sensor/image` | Gazebo Sim 到 ROS 2 | RGB 图像 |
-| `/robot_camera_sensor/depth_image` | Gazebo Sim 到 ROS 2 | 32 位浮点深度图 |
-| `/robot_camera_sensor/camera_info` | Gazebo Sim 到 ROS 2 | 相机内参 |
-| `/world/default/set_pose` | ROS 2 到 Gazebo Sim | actor 非接触代理位置同步 |
+| ROS 接口                             | 方向                | 用途                     |
+| ------------------------------------ | ------------------- | ------------------------ |
+| `/clock`                           | Gazebo Sim 到 ROS 2 | 仿真时钟                 |
+| `/cmd_vel`                         | ROS 2 到 Gazebo Sim | 底盘速度命令             |
+| `/odom`                            | Gazebo Sim 到 ROS 2 | 里程计                   |
+| `/tf`、`/joint_states`           | Gazebo Sim 到 ROS 2 | 底盘与轮子状态           |
+| `/scan`                            | Gazebo Sim 到 ROS 2 | GPU 激光雷达             |
+| `/robot_camera_sensor/image`       | Gazebo Sim 到 ROS 2 | RGB 图像                 |
+| `/robot_camera_sensor/depth_image` | Gazebo Sim 到 ROS 2 | 32 位浮点深度图          |
+| `/robot_camera_sensor/camera_info` | Gazebo Sim 到 ROS 2 | 相机内参                 |
+| `/world/default/set_pose`          | ROS 2 到 Gazebo Sim | actor 非接触代理位置同步 |
 
 `/follow_goal` 只发布用于观察的 `PoseStamped`。Nav2 命令通过
 `NavigateToPose` action 发送，避免重复提交目标。
@@ -175,20 +175,3 @@ ros2 lifecycle get /controller_server
 - `care_robot_bringup/config/slam_toolbox.yaml` 管理在线异步建图
 - `care_robot_gazebo/worlds/maze4.world` 管理默认场景和 actor 轨迹
 - `care_robot_description/urdf/care_robot.urdf` 管理机器人、传感器和差速驱动
-
-## 修改时容易漏掉的地方
-
-桥接路径目前使用实体名 `care_robot`。修改 `robot_name` 时要同步修改
-`simulation.launch.py` 中的 Gazebo 话题路径。
-
-修改机器人默认生成位置时，也要同步修改 `nav2_params.yaml` 中的
-`amcl.initial_pose`。两处不一致会让地图坐标中的初始位置产生偏差。
-
-Fortress 不会把脚本 actor 的姿态放进常规 `/pose/info`。代理同步节点会直接读取 world
-中的 waypoint，并按照仿真时钟插值后调用 `SetEntityPose`。默认人物轨迹采用 Fortress
-的 `z=1.0` 地面参考，人物从小车前方 1.5 米处起步。隐藏代理不参与接触计算，不会推动
-或卡住小车。修改 actor 轨迹后无需再维护一份重复参数。
-
-原始实验节点和旧 launch 文件保存在 `care_robot/archive`，扩展名为 `.disabled`，不会
-参与构建或安装。仓库当前使用 `Proprietary` 作为占位许可证，正式分发前需要由项目
-所有者确定许可证。
