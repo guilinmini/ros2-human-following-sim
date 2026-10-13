@@ -16,6 +16,10 @@ human_follower:
     detection_timeout: 3.0
     transform_timeout: 0.2
 
+    # Map-frame XY Kalman filter; standard deviations in m and m/s^2.
+    kalman_measurement_std: 0.15
+    kalman_acceleration_std: 1.0
+
     search_when_lost: false
     search_angular_speed: 0.4
     publish_goal_topic: true

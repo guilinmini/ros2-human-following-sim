@@ -6,6 +6,7 @@ from care_robot.geometry import compute_follow_goal
 from care_robot.geometry import image_message_to_array
 from care_robot.geometry import project_pixel_to_optical_frame
 from care_robot.geometry import sample_depth
+from care_robot.kalman import HumanPositionFilter
 import cv2
 from geometry_msgs.msg import PointStamped, PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
@@ -38,6 +39,11 @@ class HumanFollower(Node):
 
         self._declare_parameters()
         self._read_parameters()
+        self._human_filter = HumanPositionFilter(
+            measurement_std=self._kalman_measurement_std,
+            acceleration_std=self._kalman_acceleration_std,
+            reset_timeout=self._detection_timeout,
+        )
 
         self._depth_image = None
         self._camera_intrinsics = None
@@ -111,6 +117,8 @@ class HumanFollower(Node):
         self.declare_parameter('depth_scale', 0.001)
         self.declare_parameter('min_detection_confidence', 0.5)
         self.declare_parameter('min_tracking_confidence', 0.5)
+        self.declare_parameter('kalman_measurement_std', 0.15)
+        self.declare_parameter('kalman_acceleration_std', 1.0)
 
     def _read_parameters(self) -> None:
         """Cache parameters used in high-frequency callbacks."""
@@ -143,6 +151,8 @@ class HumanFollower(Node):
             value('min_detection_confidence'))
         self._min_tracking_confidence = float(
             value('min_tracking_confidence'))
+        self._kalman_measurement_std = float(value('kalman_measurement_std'))
+        self._kalman_acceleration_std = float(value('kalman_acceleration_std'))
 
     def _initialize_detector(self) -> None:
         """Select MediaPipe when available and otherwise use OpenCV HOG."""
@@ -239,13 +249,24 @@ class HumanFollower(Node):
             self._show_debug_frame(frame)
             return
 
+        try:
+            human_position = self._human_filter.update(
+                (human_point.point.x, human_point.point.y),
+                Time.from_msg(message.header.stamp).nanoseconds / 1e9,
+            )
+        except ValueError as error:
+            self.get_logger().warning(f'Invalid human position: {error}')
+            self._handle_missing_detection()
+            self._show_debug_frame(frame)
+            return
+
         now = self.get_clock().now()
         self._last_detection_time = now
         self._stop_search()
 
         goal = compute_follow_goal(
             robot_position,
-            (human_point.point.x, human_point.point.y),
+            human_position,
             self._follow_distance,
         )
         elapsed = (now - self._last_goal_time).nanoseconds / 1e9
@@ -254,8 +275,8 @@ class HumanFollower(Node):
             self._dispatch_goal(goal_message)
             self._last_goal_time = now
             self.get_logger().info(
-                f'Human=({human_point.point.x:.2f}, '
-                f'{human_point.point.y:.2f}), '
+                f'Filtered human=({human_position[0]:.2f}, '
+                f'{human_position[1]:.2f}), '
                 f'goal=({goal[0]:.2f}, {goal[1]:.2f})')
 
         if self._show_debug_view:
@@ -400,6 +421,7 @@ class HumanFollower(Node):
 
         if not self._target_lost:
             self._target_lost = True
+            self._human_filter.reset()
             if self._active_goal_handle is not None:
                 self._active_goal_handle.cancel_goal_async()
                 self._active_goal_handle = None

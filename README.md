@@ -244,6 +244,21 @@ ros2 run nav2_map_server map_saver_cli -f follow_map
 `/follow_goal` 只发布用于观察的 `PoseStamped`。Nav2 命令通过
 `NavigateToPose` action 发送，避免重复提交目标。
 
+人体位置转换到 `map` 坐标系后，使用二维匀速卡尔曼滤波估计位置和速度，再用
+滤波后的当前位置计算跟随目标。滤波按 RGB 图像时间戳逐帧更新，导航目标仍按
+`goal_update_period` 发布；未检测到人时不发送外推目标，保持原有丢失处理策略。
+丢失超时、有效观测间隔达到 `detection_timeout` 或图像时间戳回退时重置滤波。
+
+在 `care_robot_bringup/config/follower.yaml` 中可调节两个正数参数：
+
+- `kalman_measurement_std`：位置测量噪声标准差，单位米，默认 `0.15`。
+  增大时更信任运动模型，对检测抖动的平滑更强。
+- `kalman_acceleration_std`：加速度过程噪声标准差，单位米/秒²，默认 `1.0`。
+  增大时更容易响应人的加减速和转弯，但平滑程度会降低。
+
+这两个默认值是初始调参值，需要结合实际图像噪声和帧率验证。滤波不锁定人员身份，
+也不改变跟随距离或 Nav2 速度控制。
+
 可以用下面的命令快速确认数据是否到达。
 
 ```bash
