@@ -1,4 +1,4 @@
-# Based on slam_toolbox/config/mapper_params_online_async.yaml from ROS 2 Humble.
+# Based on slam_toolbox/config/mapper_params_online_async.yaml from ROS 2 Jazzy.
 slam_toolbox:
   ros__parameters:
 

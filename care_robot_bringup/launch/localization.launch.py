@@ -51,7 +51,7 @@ def generate_launch_description():
                 'params_file': params_file,
                 'use_sim_time': use_sim_time,
                 'autostart': autostart,
-                # Nav2 Humble evaluates these values in PythonExpression.
+                # Nav2 evaluates these values in PythonExpression.
                 'slam': 'False',
                 'use_composition': 'False',
             }.items(),

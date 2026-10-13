@@ -2,6 +2,10 @@
 
 import math
 
+from care_robot.geometry import compute_follow_goal
+from care_robot.geometry import image_message_to_array
+from care_robot.geometry import project_pixel_to_optical_frame
+from care_robot.geometry import sample_depth
 import cv2
 from geometry_msgs.msg import PointStamped, PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
@@ -18,11 +22,6 @@ import tf2_ros
 from tf2_ros import ConnectivityException
 from tf2_ros import ExtrapolationException
 from tf2_ros import LookupException
-
-from care_robot.geometry import compute_follow_goal
-from care_robot.geometry import image_message_to_array
-from care_robot.geometry import project_pixel_to_optical_frame
-from care_robot.geometry import sample_depth
 
 try:
     import mediapipe as mp

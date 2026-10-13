@@ -3,12 +3,11 @@
 import math
 from pathlib import Path
 
-import pytest
-
 from care_robot.actor_box_node import interpolate_trajectory
 from care_robot.actor_box_node import load_trajectory
 from care_robot.actor_box_node import proxy_center_z
 from care_robot.actor_box_node import Waypoint
+import pytest
 
 
 def test_loads_default_world_actor_trajectory():

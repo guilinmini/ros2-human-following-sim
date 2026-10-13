@@ -286,7 +286,7 @@
   </gazebo>
 
   <gazebo>
-    <plugin filename="ignition-gazebo-diff-drive-system"
+    <plugin filename="gz-sim-diff-drive-system"
             name="gz::sim::systems::DiffDrive">
       <left_joint>base_left_wheel_joint</left_joint>
       <left_joint>base_rear_left_wheel_joint</left_joint>
@@ -304,7 +304,7 @@
       <max_linear_acceleration>0.5</max_linear_acceleration>
       <max_angular_acceleration>1.0</max_angular_acceleration>
     </plugin>
-    <plugin filename="ignition-gazebo-joint-state-publisher-system"
+    <plugin filename="gz-sim-joint-state-publisher-system"
             name="gz::sim::systems::JointStatePublisher"/>
   </gazebo>
 

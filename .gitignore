@@ -9,3 +9,7 @@ log/
 
 .idea/
 .vscode/
+
+.venv/
+.env
+.env.*

@@ -3,13 +3,12 @@
 import math
 from types import SimpleNamespace
 
-import numpy as np
-import pytest
-
 from care_robot.geometry import compute_follow_goal
 from care_robot.geometry import image_message_to_array
 from care_robot.geometry import project_pixel_to_optical_frame
 from care_robot.geometry import sample_depth
+import numpy as np
+import pytest
 
 
 def test_sample_depth_uses_median_of_valid_values():

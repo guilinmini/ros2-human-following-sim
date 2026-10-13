@@ -1,4 +1,4 @@
-"""Launch Gazebo Sim Fortress, the robot, and ROS-Gazebo bridges."""
+"""Launch Gazebo Sim Harmonic, the robot, and ROS-Gazebo bridges."""
 
 import os
 
@@ -79,15 +79,6 @@ def generate_launch_description():
     ]
 
     return LaunchDescription([
-        SetEnvironmentVariable(
-            'IGN_GAZEBO_RESOURCE_PATH',
-            [
-                models_path,
-                os.pathsep,
-                EnvironmentVariable(
-                    'IGN_GAZEBO_RESOURCE_PATH', default_value=''),
-            ],
-        ),
         SetEnvironmentVariable(
             'GZ_SIM_RESOURCE_PATH',
             [

@@ -2,7 +2,7 @@
 <package format="3">
   <name>care_robot_gazebo</name>
   <version>0.1.0</version>
-  <description>Gazebo Sim Fortress resources and ROS bridges for the care robot.</description>
+  <description>Gazebo Sim Harmonic resources and ROS bridges for the care robot.</description>
   <maintainer email="abeerasif232@gmail.com">abeer</maintainer>
   <license>Proprietary</license>
 

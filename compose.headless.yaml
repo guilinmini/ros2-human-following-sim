@@ -1,0 +1,11 @@
+# Usage: docker compose -f compose.yaml -f compose.headless.yaml up --build
+services:
+  sim:
+    command:
+      - ros2
+      - launch
+      - care_robot_bringup
+      - bringup.launch.py
+      - gui:=false
+      - use_rviz:=false
+    ports: !reset []
