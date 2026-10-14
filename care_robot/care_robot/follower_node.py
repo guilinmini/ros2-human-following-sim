@@ -6,7 +6,6 @@ from care_robot.geometry import compute_follow_goal
 from care_robot.geometry import image_message_to_array
 from care_robot.geometry import project_pixel_to_optical_frame
 from care_robot.geometry import sample_depth
-from care_robot.kalman import HumanPositionFilter
 import cv2
 from geometry_msgs.msg import PointStamped, PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
@@ -39,15 +38,13 @@ class HumanFollower(Node):
 
         self._declare_parameters()
         self._read_parameters()
-        self._human_filter = HumanPositionFilter(
-            measurement_std=self._kalman_measurement_std,
-            acceleration_std=self._kalman_acceleration_std,
-            reset_timeout=self._detection_timeout,
-        )
 
         self._depth_image = None
         self._camera_intrinsics = None
         self._target_lost = False
+        self._has_seen_target = False
+        self._last_rgb_time = None
+        self._search_direction = 1.0
         self._pose_detector = None
         self._hog_detector = None
         self._initialize_detector()
@@ -87,6 +84,9 @@ class HumanFollower(Node):
         self._last_detection_time = now
         self._active_goal_handle = None
         self._goal_request_pending = False
+        self._goal_epoch = 0
+        self._canceling_goals = []
+        self._lost_timer = self.create_timer(0.1, self._check_target_timeout)
 
         self.get_logger().info('Human follower node is ready')
 
@@ -98,17 +98,20 @@ class HumanFollower(Node):
         self.declare_parameter(
             'camera_info_topic', 'robot_camera_sensor/camera_info')
         self.declare_parameter('goal_topic', 'follow_goal')
-        self.declare_parameter('cmd_vel_topic', 'cmd_vel')
+        self.declare_parameter('cmd_vel_topic', 'cmd_vel_nav')
         self.declare_parameter('navigate_action', 'navigate_to_pose')
         self.declare_parameter('camera_frame', 'camera_link_optical')
         self.declare_parameter('global_frame', 'map')
         self.declare_parameter('robot_base_frame', 'base_link')
-        self.declare_parameter('follow_distance', 1.0)
+        self.declare_parameter('follow_distance', 2.2)
         self.declare_parameter('goal_update_period', 1.0)
         self.declare_parameter('detection_timeout', 3.0)
         self.declare_parameter('transform_timeout', 0.2)
-        self.declare_parameter('search_when_lost', False)
+        self.declare_parameter('search_when_lost', True)
         self.declare_parameter('search_angular_speed', 0.4)
+        self.declare_parameter('search_linear_speed', 0.1)
+        self.declare_parameter('min_turning_radius', 0.65)
+        self.declare_parameter('search_duration', 12.0)
         self.declare_parameter('publish_goal_topic', True)
         self.declare_parameter('send_nav2_goal', True)
         self.declare_parameter('show_debug_view', False)
@@ -117,8 +120,6 @@ class HumanFollower(Node):
         self.declare_parameter('depth_scale', 0.001)
         self.declare_parameter('min_detection_confidence', 0.5)
         self.declare_parameter('min_tracking_confidence', 0.5)
-        self.declare_parameter('kalman_measurement_std', 0.15)
-        self.declare_parameter('kalman_acceleration_std', 1.0)
 
     def _read_parameters(self) -> None:
         """Cache parameters used in high-frequency callbacks."""
@@ -141,6 +142,13 @@ class HumanFollower(Node):
             seconds=float(value('transform_timeout')))
         self._search_when_lost = bool(value('search_when_lost'))
         self._search_angular_speed = float(value('search_angular_speed'))
+        self._search_linear_speed = float(value('search_linear_speed'))
+        self._min_turning_radius = float(value('min_turning_radius'))
+        self._search_duration = float(value('search_duration'))
+        if (self._min_turning_radius <= 0.0
+                or self._search_linear_speed < 0.0
+                or self._search_duration < 0.0):
+            raise ValueError('Search requires positive radius and nonnegative speed/duration')
         self._publish_goal_topic = bool(value('publish_goal_topic'))
         self._send_nav2_goal = bool(value('send_nav2_goal'))
         self._show_debug_view = bool(value('show_debug_view'))
@@ -151,8 +159,6 @@ class HumanFollower(Node):
             value('min_detection_confidence'))
         self._min_tracking_confidence = float(
             value('min_tracking_confidence'))
-        self._kalman_measurement_std = float(value('kalman_measurement_std'))
-        self._kalman_acceleration_std = float(value('kalman_acceleration_std'))
 
     def _initialize_detector(self) -> None:
         """Select MediaPipe when available and otherwise use OpenCV HOG."""
@@ -210,6 +216,7 @@ class HumanFollower(Node):
 
     def _rgb_callback(self, message: Image) -> None:
         """Run pose detection and publish a following goal."""
+        self._last_rgb_time = self.get_clock().now()
         if self._camera_intrinsics is None or self._depth_image is None:
             return
 
@@ -225,6 +232,7 @@ class HumanFollower(Node):
             self._show_debug_frame(frame)
             return
         pixel_x, pixel_y = person_center
+        self._remember_search_direction(pixel_x, frame.shape[1])
 
         depth = sample_depth(
             self._depth_image,
@@ -249,34 +257,26 @@ class HumanFollower(Node):
             self._show_debug_frame(frame)
             return
 
-        try:
-            human_position = self._human_filter.update(
-                (human_point.point.x, human_point.point.y),
-                Time.from_msg(message.header.stamp).nanoseconds / 1e9,
-            )
-        except ValueError as error:
-            self.get_logger().warning(f'Invalid human position: {error}')
-            self._handle_missing_detection()
-            self._show_debug_frame(frame)
-            return
-
         now = self.get_clock().now()
         self._last_detection_time = now
+        self._has_seen_target = True
+        reacquired = self._target_lost
         self._stop_search()
 
         goal = compute_follow_goal(
             robot_position,
-            human_position,
+            (human_point.point.x, human_point.point.y),
             self._follow_distance,
         )
         elapsed = (now - self._last_goal_time).nanoseconds / 1e9
-        if goal is not None and elapsed >= self._goal_update_period:
+        if goal is not None and (
+                reacquired or elapsed >= self._goal_update_period):
             goal_message = self._create_goal_message(goal, now)
             self._dispatch_goal(goal_message)
             self._last_goal_time = now
             self.get_logger().info(
-                f'Filtered human=({human_position[0]:.2f}, '
-                f'{human_position[1]:.2f}), '
+                f'Human=({human_point.point.x:.2f}, '
+                f'{human_point.point.y:.2f}), '
                 f'goal=({goal[0]:.2f}, {goal[1]:.2f})')
 
         if self._show_debug_view:
@@ -385,7 +385,8 @@ class HumanFollower(Node):
         """Publish the goal for observability and send it to Nav2."""
         if self._publish_goal_topic:
             self._goal_publisher.publish(goal)
-        if not self._send_nav2_goal or self._goal_request_pending:
+        if (not self._send_nav2_goal or self._goal_request_pending
+                or self._canceling_goals or self._target_lost):
             return
         if not self._navigate_client.server_is_ready():
             self.get_logger().warning(
@@ -395,10 +396,12 @@ class HumanFollower(Node):
         request = NavigateToPose.Goal()
         request.pose = goal
         self._goal_request_pending = True
+        epoch = self._goal_epoch
         future = self._navigate_client.send_goal_async(request)
-        future.add_done_callback(self._goal_response_callback)
+        future.add_done_callback(
+            lambda response: self._goal_response_callback(response, epoch))
 
-    def _goal_response_callback(self, future) -> None:
+    def _goal_response_callback(self, future, epoch) -> None:
         """Track acceptance of the most recently submitted Nav2 goal."""
         self._goal_request_pending = False
         try:
@@ -410,6 +413,62 @@ class HumanFollower(Node):
             self.get_logger().warning('Nav2 rejected the following goal')
             return
         self._active_goal_handle = goal_handle
+        result = goal_handle.get_result_async()
+        result.add_done_callback(
+            lambda response: self._goal_result_callback(response, goal_handle))
+        # A goal submitted before loss can be accepted after reacquisition.
+        if self._target_lost or epoch != self._goal_epoch:
+            self._cancel_navigation(goal_handle)
+
+    def _goal_result_callback(self, future, goal_handle) -> None:
+        """Release navigation ownership only after an action has finished."""
+        try:
+            future.result()
+        except Exception as error:
+            self.get_logger().error(f'Nav2 result unavailable: {error}')
+            return
+        self._canceling_goals = [
+            handle for handle in self._canceling_goals
+            if handle is not goal_handle]
+        if self._active_goal_handle is goal_handle:
+            self._active_goal_handle = None
+
+    def _cancel_navigation(self, goal_handle) -> None:
+        """Wait for navigation to finish before allowing search commands."""
+        if any(handle is goal_handle for handle in self._canceling_goals):
+            return
+        self._canceling_goals.append(goal_handle)
+        goal_handle.cancel_goal_async()
+        if self._active_goal_handle is goal_handle:
+            self._active_goal_handle = None
+
+    def _remember_search_direction(self, pixel_x, image_width) -> None:
+        """Turn toward the last observed side, ignoring small centre jitter."""
+        offset = pixel_x - self._camera_intrinsics[2]
+        if abs(offset) > image_width * 0.05:
+            # Optical X points right, whereas positive base yaw turns left.
+            self._search_direction = -1.0 if offset > 0.0 else 1.0
+
+    def _check_target_timeout(self) -> None:
+        """Refresh lost-target commands independently of incoming images."""
+        if self._last_rgb_time is None:
+            return
+        self._handle_missing_detection()
+        if (not self._target_lost or self._goal_request_pending
+                or self._canceling_goals):
+            return
+        image_age = (
+            self.get_clock().now() - self._last_rgb_time).nanoseconds / 1e9
+        search_age = (
+            self.get_clock().now() - self._last_detection_time
+        ).nanoseconds / 1e9 - self._detection_timeout
+        if (self._search_when_lost and self._has_seen_target
+                and image_age < self._detection_timeout
+                and search_age < self._search_duration):
+            self._publish_search_command()
+        else:
+            # A stopped image stream cannot support visual reacquisition.
+            self._cmd_vel_publisher.publish(Twist())
 
     def _handle_missing_detection(self) -> None:
         """Cancel stale navigation and apply the configured lost policy."""
@@ -421,27 +480,25 @@ class HumanFollower(Node):
 
         if not self._target_lost:
             self._target_lost = True
-            self._human_filter.reset()
+            self._goal_epoch += 1
             if self._active_goal_handle is not None:
-                self._active_goal_handle.cancel_goal_async()
-                self._active_goal_handle = None
+                self._cancel_navigation(self._active_goal_handle)
 
             if self._search_when_lost:
                 self.get_logger().info(
-                    'Human lost; starting search rotation')
+                    'Human lost; bounded arc search pending navigation cancellation')
             else:
                 self._cmd_vel_publisher.publish(Twist())
                 self.get_logger().info('Human lost; holding position')
 
-        if self._search_when_lost:
-            self._publish_search_command()
-
     def _publish_search_command(self) -> None:
-        """Refresh the optional in-place search command."""
-        # Gazebo's differential-drive controller times out stale velocity
-        # commands. Refresh the command on every camera frame while searching.
+        """Search along a forward arc within the chassis curvature limit."""
         command = Twist()
-        command.angular.z = self._search_angular_speed
+        command.linear.x = self._search_linear_speed
+        command.angular.z = min(
+            abs(self._search_angular_speed),
+            self._search_linear_speed / self._min_turning_radius,
+        ) * self._search_direction
         self._cmd_vel_publisher.publish(command)
 
     def _stop_search(self) -> None:

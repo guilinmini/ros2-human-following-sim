@@ -1,0 +1,12 @@
+SU7 Ultra visual assets
+
+Imported from the user-provided su7ultra_simulation-masters repository:
+src/su7ultra_description/models/su7ultra/meshes/
+
+The source repository README credits Ming2zun for the original vehicle model.
+The source package.xml contains "TODO: License declaration"; no additional
+asset license was supplied with these files.
+
+car.zip contains the original car.dae and is unpacked during CMake configuration.
+Texture filenames were adjusted to match the Collada references. Wheel meshes
+and image contents are unchanged. The URDF applies a uniform scale of 0.12.

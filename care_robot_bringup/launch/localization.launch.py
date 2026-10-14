@@ -10,6 +10,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from nav2_common.launch import RewrittenYaml
 
 
 def generate_launch_description():
@@ -28,6 +29,17 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     autostart = LaunchConfiguration('autostart')
     use_rviz = LaunchConfiguration('use_rviz')
+
+    configured_params = RewrittenYaml(
+        source_file=params_file,
+        param_rewrites={
+            'default_nav_to_pose_bt_xml': os.path.join(
+                bringup_share, 'config', 'navigate_to_pose_ackermann.xml'),
+            'default_nav_through_poses_bt_xml': os.path.join(
+                bringup_share, 'config', 'navigate_through_poses_ackermann.xml'),
+        },
+        convert_types=True,
+    )
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -48,7 +60,7 @@ def generate_launch_description():
                 os.path.join(nav2_share, 'launch', 'bringup_launch.py')),
             launch_arguments={
                 'map': map_file,
-                'params_file': params_file,
+                'params_file': configured_params,
                 'use_sim_time': use_sim_time,
                 'autostart': autostart,
                 # Nav2 evaluates these values in PythonExpression.

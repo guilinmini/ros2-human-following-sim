@@ -4,24 +4,25 @@ human_follower:
     depth_topic: robot_camera_sensor/depth_image
     camera_info_topic: robot_camera_sensor/camera_info
     goal_topic: follow_goal
-    cmd_vel_topic: cmd_vel
+    # Search commands use the same smoother/collision monitor as Nav2.
+    cmd_vel_topic: cmd_vel_nav
     navigate_action: navigate_to_pose
 
     camera_frame: camera_link_optical
     global_frame: map
     robot_base_frame: base_link
 
-    follow_distance: 1.0
+    # Measured from the rear axle; leave the full person in the HOG camera view.
+    follow_distance: 2.2
     goal_update_period: 1.0
     detection_timeout: 3.0
     transform_timeout: 0.2
 
-    # Map-frame XY Kalman filter; standard deviations in m and m/s^2.
-    kalman_measurement_std: 0.15
-    kalman_acceleration_std: 1.0
-
-    search_when_lost: false
+    search_when_lost: true
     search_angular_speed: 0.4
+    search_linear_speed: 0.1
+    min_turning_radius: 0.65
+    search_duration: 12.0
     publish_goal_topic: true
     send_nav2_goal: true
     show_debug_view: false

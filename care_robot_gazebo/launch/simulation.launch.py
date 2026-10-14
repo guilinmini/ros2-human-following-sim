@@ -84,6 +84,8 @@ def generate_launch_description():
             [
                 models_path,
                 os.pathsep,
+                os.path.dirname(description_share),
+                os.pathsep,
                 EnvironmentVariable('GZ_SIM_RESOURCE_PATH', default_value=''),
             ],
         ),

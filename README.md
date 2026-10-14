@@ -244,20 +244,20 @@ ros2 run nav2_map_server map_saver_cli -f follow_map
 `/follow_goal` 只发布用于观察的 `PoseStamped`。Nav2 命令通过
 `NavigateToPose` action 发送，避免重复提交目标。
 
-人体位置转换到 `map` 坐标系后，使用二维匀速卡尔曼滤波估计位置和速度，再用
-滤波后的当前位置计算跟随目标。滤波按 RGB 图像时间戳逐帧更新，导航目标仍按
-`goal_update_period` 发布；未检测到人时不发送外推目标，保持原有丢失处理策略。
-丢失超时、有效观测间隔达到 `detection_timeout` 或图像时间戳回退时重置滤波。
+默认跟随距离 `follow_distance: 2.2 m` 从后轴中心计算，为 HOG 全身检测保留相机视野。
 
-在 `care_robot_bringup/config/follower.yaml` 中可调节两个正数参数：
+默认启用目标丢失搜索：连续 `detection_timeout`（默认 3 秒）没有有效人体位置后，
+先取消当前导航，等待导航结束，再朝人体最后出现在画面中的一侧低速弧线搜索。
+默认前进速度 `search_linear_speed: 0.1 m/s`，角速度受 `search_angular_speed`
+和 `速度 / min_turning_radius` 双重限制（默认实际约 `0.154 rad/s`）。
+搜索最多持续 `search_duration: 12 s`，之后停车；启动后从未检测到人体时不行驶。
+重新检测到有效
+RGB-D 人体位置后停止搜索并立即更新跟随目标。设置 `search_when_lost: false`
+可恢复丢失后原地等待的行为。墙体遮挡或检测器持续漏检时，搜索不能保证找回目标。
 
-- `kalman_measurement_std`：位置测量噪声标准差，单位米，默认 `0.15`。
-  增大时更信任运动模型，对检测抖动的平滑更强。
-- `kalman_acceleration_std`：加速度过程噪声标准差，单位米/秒²，默认 `1.0`。
-  增大时更容易响应人的加减速和转弯，但平滑程度会降低。
-
-这两个默认值是初始调参值，需要结合实际图像噪声和帧率验证。滤波不锁定人员身份，
-也不改变跟随距离或 Nav2 速度控制。
+搜索速度经 `cmd_vel_nav` 输入 Nav2 的速度平滑器和碰撞监测器，再输出到底盘；
+`cmd_vel_topic` 应与所用导航栈的速度入口保持一致。定时器持续检查目标和图像超时，
+相机断流时取消导航并停止，不继续搜索行驶。
 
 可以用下面的命令快速确认数据是否到达。
 
@@ -270,8 +270,30 @@ ros2 lifecycle get /controller_server
 
 ## 配置位置
 
+默认小车采用 SU7 Ultra 外观，模型来自提供的 `su7ultra_description` 资源，统一
+缩放为原模型的 `0.12` 倍，车身约长 `0.64 m`、宽 `0.26 m`。车轮位置、碰撞体
+和阿克曼插件的轮距、轮径已按缩放后的几何尺寸匹配。底盘使用前轮独立转向、
+后轮驱动，轴距 `0.3588 m`、轮距 `0.19992 m`、轮半径 `0.0432 m`。
+`base_link` 位于后轴中心，车身、相机和雷达相对车辆的位置保持一致。
+
+Gazebo 使用 Harmonic 原生 `AckermannSteering` 插件，前轮内外侧采用不同转角，
+四轮使用正常横向摩擦，不再依靠侧滑转向。底盘、Smac Hybrid 规划器、MPPI
+控制器及丢失搜索统一使用 `0.65 m` 最小转弯半径；costmap 使用相对后轴的矩形
+轮廓。车辆支持前进、倒车和弧线转向，不能原地旋转。导航恢复行为树也移除了 Spin。
+`/cmd_vel` 仍接收线速度和角速度，插件将其转换为轮速和转角，启动命令不变。
+
+物理回归测试检查真实车体的前进、左右弧线、倒车转向、静止转向不引起旋转，
+同时验证内外轮阿克曼关系、最小转弯半径和里程计，避免仅以轮速判断车辆运动。
+
+![SU7 Ultra 小车在 Gazebo 中的实际渲染](docs/images/su7-preview.png)
+
+网格和贴图位于 `care_robot_description/meshes/su7ultra/`。体积较大的车身以
+`car.zip` 保存，构建时自动解压并安装；首次构建或更新模型后需重新编译
+`care_robot_description`。运行时使用包内资源，不依赖原 SU7 工作空间或
+`~/.gazebo/models`。资源来源记录在同目录的 `NOTICE` 文件中。
+
 - `care_robot_bringup/config/follower.yaml` 管理检测器、图像话题、TF 和跟随行为
 - `care_robot_bringup/config/nav2_params.yaml` 管理 AMCL、规划器、控制器和 costmap
 - `care_robot_bringup/config/slam_toolbox.yaml` 管理在线异步建图
 - `care_robot_gazebo/worlds/maze4.world` 管理默认场景和 actor 轨迹
-- `care_robot_description/urdf/care_robot.urdf` 管理机器人、传感器和差速驱动
+- `care_robot_description/urdf/care_robot.urdf` 管理机器人、传感器和阿克曼底盘
